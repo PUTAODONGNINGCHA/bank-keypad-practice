@@ -32,20 +32,32 @@ h1 em{font-style:normal;color:var(--muted);font-weight:400;font-size:12.5px;marg
 .main{display:grid;grid-template-columns:1fr;gap:13px;align-items:start}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px}
 
-.stage{padding:20px 22px;min-height:320px;display:flex;flex-direction:column}
+/* 高度写死：准备页与练习中必须一样高，否则一开始答题，题面一长就把
+   下面的统计栏/控制栏整体顶下去（速打 +104px、传票 +188px），看着像"页面往下跳"。
+   内容超出时由内部 .flowbox/.list 自己滚动，不再撑高外层 */
+.stage{padding:20px 22px;height:460px;display:flex;flex-direction:column}
+/* #stage 是 JS 往里塞题面的那层容器，也是 .stage 的 flex 子项。
+   它的默认 min-height:auto 会让它拒绝收缩到内容高度以下（长题面时直接溢出卡片、
+   且 .flowbox 的 overflow 形同虚设），必须 flex:1 + min-height:0 才能把
+   高度约束传下去、由 .flowbox/.list 自己滚动 */
+#stage{flex:1;min-height:0;display:flex;flex-direction:column}
 .stage-head{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);margin-bottom:15px;flex:none}
 .badge{padding:3px 10px;border-radius:20px;background:#1f6feb1a;color:var(--blue);font-size:11px}
 .hint{margin-left:auto;color:var(--dim)}
 
-.flowbox{flex:1;display:flex;flex-direction:column;overflow-y:auto;max-height:420px}
-.flow{font-family:var(--mono);font-size:32px;letter-spacing:4px;line-height:1.8;margin:auto 0}
+/* min-height:0 是 flex 子项能收缩并触发内部滚动的必要条件 */
+.flowbox{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto}
+/* flex:none 不能省：.flow 是 .flowbox 的 flex 子项，默认 flex-shrink:1，
+   题面比可视区高时它会被压扁（文字溢出且不产生滚动条，长位数会被裁掉）；
+   置 none 后保持自然高度，超出部分交给 .flowbox 滚动 */
+.flow{font-family:var(--mono);font-size:32px;letter-spacing:4px;line-height:1.8;margin:auto 0;flex:none}
 .fline{white-space:nowrap}
 .u{color:var(--dim)}
 .g{color:var(--green)}
 .c{color:var(--txt);background:#1f6feb4d;border-radius:3px;box-shadow:inset 0 0 0 1px #58a6ff88}
 .e{color:var(--red);text-decoration:underline}
 
-.list{display:flex;flex-direction:column;gap:5px;flex:1;max-height:430px;overflow-y:auto;padding-right:4px}
+.list{display:flex;flex-direction:column;gap:5px;flex:1;min-height:0;overflow-y:auto;padding-right:4px}
 .row{display:flex;align-items:center;gap:14px;padding:7px 14px;border-radius:8px;
   background:var(--panel2);border:1px solid transparent;transition:.15s;flex:none}
 .row.cur{border-color:var(--blue);background:#1f6feb14}
@@ -586,6 +598,11 @@ function restartAll(){
 }
 
 document.addEventListener('keydown', e=>{
+  /* 空格的浏览器默认行为是「向下翻页」。本应用把空格当「开始键」，
+     不拦掉的话一开始答题整页就往下滚一屏（窗口越矮越明显）。
+     复选框例外：空格是它正常的开关按键，交给它自己处理 */
+  if(e.key === ' ' && !(document.activeElement && document.activeElement.tagName === 'INPUT')) e.preventDefault();
+
   if(e.key === 'Tab'){ e.preventDefault(); restartAll(); return; }
   /* 未开始时：按任意键即可启动计时，不必非得是数字键 */
   if(!S.started && !S.done && isStartKey(e)){
