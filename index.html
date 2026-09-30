@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>银行小键盘录入练习</title>
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2128; --line:#30363d;
+  --txt:#e6edf3; --muted:#8b949e; --dim:#484f58;
+  --blue:#58a6ff; --green:#3fb950; --red:#f85149; --amber:#d29922; --purple:#bc8cff;
+  --mono:"JetBrains Mono","Cascadia Mono",Consolas,"Courier New",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--txt); min-height:100vh;
+  font-family:-apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  padding:18px; display:flex; justify-content:center;
+}
+.wrap{width:100%;max-width:1180px;display:flex;flex-direction:column;gap:13px}
+
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+h1{font-size:17px;font-weight:600;letter-spacing:.3px}
+h1 em{font-style:normal;color:var(--muted);font-weight:400;font-size:12.5px;margin-left:9px}
+.tabs{display:flex;gap:6px;margin-left:auto}
+.tab{padding:7px 15px;border-radius:7px;border:1px solid var(--line);background:var(--panel);
+  color:var(--muted);cursor:pointer;font-size:13px;font-family:inherit;transition:.15s}
+.tab:hover{color:var(--txt);border-color:var(--dim)}
+.tab.on{background:#1f6feb1f;border-color:var(--blue);color:var(--blue)}
+
+/* 单列：右侧面板已移除，练习区获得全部宽度 */
+.main{display:grid;grid-template-columns:1fr;gap:13px;align-items:start}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+
+.stage{padding:20px 22px;min-height:320px;display:flex;flex-direction:column}
+.stage-head{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);margin-bottom:15px;flex:none}
+.badge{padding:3px 10px;border-radius:20px;background:#1f6feb1a;color:var(--blue);font-size:11px}
+.hint{margin-left:auto;color:var(--dim)}
+
+.flowbox{flex:1;display:flex;flex-direction:column;overflow-y:auto;max-height:420px}
+.flow{font-family:var(--mono);font-size:32px;letter-spacing:4px;line-height:1.8;margin:auto 0}
+.fline{white-space:nowrap}
+.u{color:var(--dim)}
+.g{color:var(--green)}
+.c{color:var(--txt);background:#1f6feb4d;border-radius:3px;box-shadow:inset 0 0 0 1px #58a6ff88}
+.e{color:var(--red);text-decoration:underline}
+
+.list{display:flex;flex-direction:column;gap:5px;flex:1;max-height:430px;overflow-y:auto;padding-right:4px}
+.row{display:flex;align-items:center;gap:14px;padding:7px 14px;border-radius:8px;
+  background:var(--panel2);border:1px solid transparent;transition:.15s;flex:none}
+.row.cur{border-color:var(--blue);background:#1f6feb14}
+.row.done{opacity:.45}
+.no{font-family:var(--mono);font-size:11.5px;color:var(--dim);width:24px;flex:none}
+.val{font-family:var(--mono);font-size:20px;letter-spacing:2px;white-space:pre;
+  flex:1;display:flex;justify-content:flex-end;align-items:baseline;padding-right:10px}
+/* min-width:0 是关键：flex 项默认 min-width:auto，整数串过长时不肯收缩，
+   会把小数点整体推右 ⇒ 小数点列出现多个取值。置 0 后位置只由 .vtail 决定 */
+.vip{text-align:right;min-width:0}
+/* 尾部（小数点 + 小数位）宽度恒为 (最大小数位数 + 1) 个字符位
+   ⇒ 无论小数几位，小数点都落在同一列 */
+.vtail{flex:none;text-align:left;width:calc((var(--fpn,2) + 1) * (1ch + 2px))}
+.chk{font-size:11px;color:var(--muted);flex:none;width:92px;text-align:right}
+.chk.ok{color:var(--green)}
+.chk.go{color:var(--blue)}
+
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:13px 15px}
+.stat{text-align:center}
+.stat b{display:block;font-family:var(--mono);font-size:21px;font-weight:600;margin-bottom:2px}
+.stat i{font-style:normal;font-size:10.5px;color:var(--muted);letter-spacing:.5px}
+
+.bar{display:flex;align-items:center;gap:16px;padding:10px 15px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.sw{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
+.sw input{accent-color:var(--blue);cursor:pointer}
+select{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;
+  padding:4px 8px;font-size:12px;font-family:inherit;cursor:pointer;outline:none}
+select:hover{border-color:var(--blue)}
+/* 音色名长短不一，固定最小宽度，避免切换时控制栏抖动 */
+#selSfx{min-width:92px}
+.btn{margin-left:auto;padding:7px 16px;border-radius:7px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--txt);cursor:pointer;font-size:12.5px;font-family:inherit}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+
+.done-box{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px}
+.done-box .big{font-family:var(--mono);font-size:44px;color:var(--green);font-weight:600}
+.done-box .sub{font-size:13px;color:var(--muted);margin-bottom:14px}
+.done-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;text-align:center;width:100%;max-width:420px}
+.done-grid b{display:block;font-family:var(--mono);font-size:20px;margin-bottom:2px}
+.done-grid i{font-style:normal;font-size:11px;color:var(--muted)}
+.warn{color:var(--amber);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>银行小键盘录入练习<em>数字键 / 金额 / 传票翻打</em></h1>
+    <div class="tabs">
+      <button class="tab on" data-mode="flow">数字速打</button>
+      <button class="tab" data-mode="amount">金额录入</button>
+      <button class="tab" data-mode="voucher">传票翻打</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="card stage">
+      <div class="stage-head">
+        <span class="badge" id="modeName">数字速打</span>
+        <span id="progText">—</span>
+        <span class="hint" id="tipText">按任意键开始</span>
+      </div>
+      <div id="stage"></div>
+    </div>
+
+  </div>
+
+  <div class="card stats">
+    <div class="stat"><b id="sTime">0.0</b><i>用时 (秒)</i></div>
+    <div class="stat"><b id="sAcc" style="color:var(--green)">100.0%</b><i>准确率</i></div>
+    <div class="stat"><b id="sKpm" style="color:var(--blue)">0</b><i>键 / 分钟</i></div>
+    <div class="stat"><b id="sKeys">0</b><i>击键总数</i></div>
+    <div class="stat"><b id="sBad" style="color:var(--red)">0</b><i>错误次数</i></div>
+  </div>
+
+  <div class="card bar">
+    <label class="sw"><input type="checkbox" id="optStrict" checked> 仅用小键盘</label>
+    <label class="sw"><input type="checkbox" id="optBeep" checked> 击键音效</label>
+    <label class="sw">音色
+      <select id="selSfx">
+        <option value="key" selected>机械键盘</option>
+        <option value="ding">清脆叮</option>
+        <option value="wood">木质轻叩</option>
+      </select>
+    </label>
+    <label class="sw">速打位数
+      <select id="selFlowLen">
+        <option value="60">60</option>
+        <option value="120" selected>120</option>
+        <option value="200">200</option>
+        <option value="300">300</option>
+      </select>
+    </label>
+    <label class="sw">整数位
+      <select id="selIntDigits">
+        <option value="4-12">4~12 位</option>
+        <option value="6-16">6~16 位</option>
+        <option value="8-20" selected>8~20 位</option>
+        <option value="1-24">1~24 位（跨幅最大）</option>
+      </select>
+    </label>
+    <label class="sw">小数位
+      <select id="selFracDigits">
+        <option value="0-2" selected>0~2 位</option>
+        <option value="0-3">0~3 位</option>
+        <option value="1-3">1~3 位</option>
+        <option value="2-2">固定 2 位</option>
+      </select>
+    </label>
+    <span id="msg" class="warn"></span>
+    <button class="btn" id="btnRestart">重新开始 (Tab)</button>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+
+/* ---------- 配置 ---------- */
+const CFG = {
+  flow:    { label:'数字速打', kind:'flow', tip:'连续输入随机数字，每行 20 位' },
+  amount:  { label:'金额录入', kind:'list', rows:12, tip:'逐笔录入金额，每笔输完按回车确认' },
+  voucher: { label:'传票翻打', kind:'list', rows:24, tip:'位数长短不一、小数点对齐，连打练稳定性' }
+};
+const PER_LINE = 20;      // 速打每行显示位数
+
+/* 标准小键盘指法：食指 7/4/1/0，中指 8/5/2，无名指 9/6/3、小数点，小指 运算符与回车 */
+const FINGER = {
+  '7':'食指','4':'食指','1':'食指','0':'食指',
+  '8':'中指','5':'中指','2':'中指',
+  '9':'无名指','6':'无名指','3':'无名指','.':'无名指',
+  '/':'小指','*':'小指','-':'小指','+':'小指','Enter':'小指'
+};
+/* 键名读法：数字用单字，简短易读；符号逐个念名 */
+const SPEAK = {
+  '0':'零','1':'一','2':'二','3':'三','4':'四','5':'五',
+  '6':'六','7':'七','8':'八','9':'九','.':'小数点',
+  '/':'除号','*':'乘号','-':'减号','+':'加号','Enter':'回车'
+};
+
+/* ---------- 状态 ---------- */
+let S = {};
+const rnd = n => Math.floor(Math.random()*n);
+
+function readOpts(){
+  const rng = (sel, defA, defB) => {
+    const el = $(sel);
+    const p  = String(el ? el.value : defA + '-' + defB).split('-');
+    return [ +p[0] || defA, +p[1] || defB ];
+  };
+  const [dmin, dmax] = rng('#selIntDigits', 8, 20);
+  const [fmin, fmax] = rng('#selFracDigits', 0, 2);
+  return {
+    strict:  $('#optStrict')  ? $('#optStrict').checked : true,
+    beepOn:  $('#optBeep')    ? $('#optBeep').checked   : true,
+    sfx:     ($('#selSfx') && TIMBRE[$('#selSfx').value]) ? $('#selSfx').value : 'key',
+    flowLen: $('#selFlowLen') ? +$('#selFlowLen').value : 120,
+    dmin: dmin, dmax: dmax,
+    fmin: fmin, fmax: fmax
+  };
+}
+
+function reset(){
+  const mode = S.mode || 'flow';
+  const o = readOpts();
+  S = Object.assign({
+    mode: mode,
+    kind: CFG[mode].kind,
+    items: [], idx:0, pos:0,
+    started:false, done:false,
+    t0:0, tick:null,
+    keys:0, ok:0, bad:0
+  }, o);
+  S.items = buildItems();
+  $('#stage').innerHTML = welcomeHTML();
+  renderProgress(); updateStats();
+}
+
+/* ---------- 出题 ---------- */
+
+/* 纯随机数字段 */
+function randDigits(n){
+  let s = '';
+  for(let i=0;i<n;i++) s += rnd(10);
+  return s;
+}
+
+/* 判定「有规律」，这类串在练习里是废题，命中即重掷：
+   全同号 8888 / 等步长连号 1234·2468·1357 / 回文 12321 */
+function isRegular(s){
+  if(s.length < 4) return false;
+  if(/^(\d)\1*$/.test(s)) return true;                 // 全同
+  const step = +s[1] - +s[0];
+  let arith = true;
+  for(let i=2;i<s.length;i++) if(+s[i] - +s[i-1] !== step){ arith = false; break; }
+  if(arith) return true;                               // 等差数列（含步长 0）
+  if(s.split('').reverse().join('') === s) return true; // 回文
+  return false;
+}
+
+/* 重掷若干次直到不像规律串；兜底返回最后一次结果，保证不死循环 */
+function drawSeg(len, firstNonZero){
+  for(let k=0;k<40;k++){
+    const s = (firstNonZero ? String(rnd(9)+1) : '') + randDigits(len - (firstNonZero?1:0));
+    if(!isRegular(s)) return s;
+  }
+  return (firstNonZero ? String(rnd(9)+1) : '') + randDigits(len - (firstNonZero?1:0));
+}
+
+/* 速打：按 5 位一段生成并逐段去规律，避免局部出现 12345 这类顺子 */
+function genFlow(n){
+  let s = '';
+  while(s.length < n){
+    const take = Math.min(5, n - s.length);
+    let seg = '';
+    for(let k=0;k<40;k++){ seg = randDigits(take); if(!isRegular(seg)) break; }
+    s += seg;
+  }
+  return s;
+}
+
+/* 金额：整数位数在 [dmin,dmax]、小数位数在 [fmin,fmax] 内各自独立随机
+   ⇒ 每条长短不一、小数位也不固定；纯随机却排除规律串，练的是真反应
+   渲染端按小数点分列 ⇒ 小数位数不同也照样对齐 */
+function genAmount(dmin, dmax, fmin, fmax){
+  const d = dmin + rnd(dmax - dmin + 1);
+  const f = fmin + rnd(fmax - fmin + 1);
+  const ip = drawSeg(d, true);              // 整数：首位非零
+  if(f === 0) return ip;                    // 整数金额，无小数点
+  let fp = '';
+  for(let k=0;k<40;k++){                    // 小数：排除 .00 / .11 / .999 这类
+    fp = randDigits(f);
+    if(!/^(\d)\1*$/.test(fp)) break;
+  }
+  return ip + '.' + fp;
+}
+
+function buildItems(){
+  const c = CFG[S.mode];
+  if(c.kind === 'flow') return [ genFlow(S.flowLen) ];
+  const arr = [];
+  for(let i=0;i<c.rows;i++) arr.push( genAmount(S.dmin, S.dmax, S.fmin, S.fmax) );
+  return arr;
+}
+
+/* ---------- 渲染 ---------- */
+function welcomeHTML(){
+  return '<div class="done-box"><div class="big" style="color:var(--dim);font-size:26px">准备就绪</div>'
+       + '<div class="sub">' + CFG[S.mode].tip + '</div></div>';
+}
+
+function clsOf(i, upto, cur){
+  return i < upto ? 'g' : (i === cur ? 'c' : 'u');
+}
+
+function renderStage(){
+  if(S.kind === 'flow'){
+    const t = S.items[0];
+    let html = '';
+    for(let s=0; s<t.length; s+=PER_LINE){
+      const end = Math.min(s+PER_LINE, t.length);
+      let line = '';
+      for(let i=s; i<end; i++){
+        line += '<span class="' + clsOf(i, S.pos, S.pos) + '">' + t[i] + '</span>';
+        if((i-s+1) % 5 === 0 && i < end-1) line += '&nbsp;';
+      }
+      html += '<div class="fline">' + line + '</div>';
+    }
+    $('#stage').innerHTML = '<div class="flowbox"><div class="flow">' + html + '</div></div>';
+  } else {
+    /* 本组最大小数位数 → 决定尾部固定占位宽度（保证小数点同列） */
+    const maxF = S.items.reduce((m,t)=>{
+      const k = t.indexOf('.');
+      return Math.max(m, k < 0 ? 0 : t.length - k - 1);
+    }, 0);
+
+    const rows = S.items.map((t,i)=>{
+      /* 每行都必须有 .chk 元素（哪怕是空的）——否则该行 .val 变宽 92px，
+         整列小数点被推右。用固定宽度的空 span 占位，不是可省的元素 */
+      let cls = 'row', chkCls = 'chk', chkTxt = '';
+      if(i < S.idx){ cls += ' done'; chkCls += ' ok'; chkTxt = '已确认'; }
+      else if(i === S.idx){
+        cls += ' cur';
+        if(S.pos >= t.length){ chkCls += ' go'; chkTxt = '按回车确认'; }
+        else chkTxt = S.pos + '/' + t.length;
+      }
+      /* 按小数点拆成「整数部」「尾部」，分别放进两个容器：
+         尾部宽度固定 ⇒ 小数位数不同的各行，小数点仍落在同一列 */
+      const kDot = t.indexOf('.');
+      const iEnd = kDot < 0 ? t.length : kDot;
+      const at = j => clsOf(j, i<S.idx ? t.length : S.pos, i===S.idx ? S.pos : -1);
+      let ip = '', tl = '';
+      for(let j=0;j<iEnd;j++)  ip += '<span class="' + at(j) + '">' + t[j] + '</span>';
+      for(let j=iEnd;j<t.length;j++) tl += '<span class="' + at(j) + '">' + t[j] + '</span>';
+      return '<div class="' + cls + '"><span class="no">' + String(i+1).padStart(2,'0') + '</span>'
+           + '<span class="val"><span class="vip">' + ip + '</span>'
+           + '<span class="vtail">' + tl + '</span></span>'
+           + '<span class="' + chkCls + '">' + chkTxt + '</span></div>';
+    }).join('');
+    $('#stage').innerHTML = '<div class="list" style="--fpn:' + maxF + '">' + rows + '</div>';
+    scrollToCur();
+  }
+}
+
+function scrollToCur(){
+  const list = document.querySelector('.list');
+  const cur = document.querySelector('.row.cur');
+  if(!list || !cur) return;
+  const top = cur.offsetTop - list.offsetTop;
+  const bottom = top + cur.offsetHeight;
+  if(top < list.scrollTop) list.scrollTop = top - 8;
+  else if(bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight + 8;
+}
+
+function nextChar(){
+  const t = S.items[S.idx];
+  if(t === undefined) return null;
+  if(S.pos < t.length) return t[S.pos];
+  if(S.kind === 'list') return 'Enter';
+  return null;
+}
+
+/* 目标键 → 提示文案，如 "七，食指"（用于错误提示） */
+function cueText(ch){
+  if(!ch) return '';
+  const name = SPEAK[ch] || ch;
+  const f = FINGER[ch];
+  return f ? (name + '，' + f) : name;
+}
+
+function renderProgress(){
+  const c = CFG[S.mode];
+  $('#modeName').textContent = c.label;
+  $('#progText').textContent = c.kind === 'flow'
+    ? (S.pos + ' / ' + S.flowLen + ' 位')
+    : ('第 ' + Math.min(S.idx+1, c.rows) + ' / ' + c.rows + ' 笔');
+}
+
+function updateStats(){
+  const sec = S.started ? (Date.now() - S.t0)/1000 : 0;
+  $('#sTime').textContent = sec.toFixed(1);
+  $('#sKeys').textContent = S.keys;
+  $('#sBad').textContent = S.bad;
+  $('#sAcc').textContent = (S.keys ? (S.ok/S.keys*100) : 100).toFixed(1) + '%';
+  $('#sKpm').textContent = sec > 0.3 ? Math.round(S.keys/(sec/60)) : 0;
+}
+
+/* ---------- 音效 ---------- */
+/* 两级发声单元：
+   tone()  —— 振荡器，给"调性"（叮、壳体的闷响）
+   noise() —— 白噪声经带通/高通滤波 + 极快包络，给"脆"
+              真实机械键盘的清脆感来自塑料撞击的宽带瞬态，
+              纯正弦永远做不出来 —— 这是本次换音色的技术关键 */
+let actx = null, noiseSrc = null;
+function audio(){
+  actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+  if(actx.state === 'suspended') actx.resume();
+  return actx;
+}
+/* 白噪声缓冲只生成一次，之后复用；每次播放取随机偏移，
+   使每次击键的噪声相位不同 —— 连打时不会听出"复读"感 */
+function noiseBuffer(){
+  if(noiseSrc) return noiseSrc;
+  const n = Math.floor(actx.sampleRate * 0.5);
+  noiseSrc = actx.createBuffer(1, n, actx.sampleRate);
+  const d = noiseSrc.getChannelData(0);
+  for(let i=0;i<n;i++) d[i] = Math.random()*2 - 1;
+  return noiseSrc;
+}
+function tone(freq, dur, type, vol, delay){
+  try{
+    const a = audio();
+    const t0 = a.currentTime + (delay || 0);
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, t0);
+    o.connect(g); g.connect(a.destination);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.start(t0); o.stop(t0 + dur + 0.03);
+  }catch(e){}
+}
+/* filt: 'bandpass'(有中心频率，像叩击) / 'highpass'(只有尖)
+   atk: 起振毫秒 —— 越小越"脆"，>3ms 就开始发"闷" */
+function noise(dur, filt, freq, q, vol, delay, atk){
+  try{
+    const a = audio();
+    const t0 = a.currentTime + (delay || 0);
+    const src = a.createBufferSource();
+    src.buffer = noiseBuffer();
+    const f = a.createBiquadFilter();
+    f.type = filt; f.frequency.setValueAtTime(freq, t0); f.Q.setValueAtTime(q || 1, t0);
+    const g = a.createGain();
+    src.connect(f); f.connect(g); g.connect(a.destination);
+    const at = Math.max(0.0004, (atk || 0.5) / 1000);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + at);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.start(t0, Math.random() * 0.4);          // 随机偏移 → 每次噪声不同
+    src.stop(t0 + dur + 0.03);
+  }catch(e){}
+}
+
+/* ---- 音色配方 ----
+   元素格式：['t', 频率, 时长, 波形, 音量, 延迟]
+             ['n', 时长, 滤波类型, 频率, Q, 音量, 延迟, 起振ms]
+   三层叠加才有"敲下去"的实体感：脆(中频宽带) + 尖(高频) + 体(低频定音)，
+   只用噪声会像沙沙声，只用定音又不像键盘 */
+const TIMBRE = {
+  /* 机械键盘脆响：模拟键帽撞底壳 —— 中频宽带冲击 + 高频塑料尖 + 极低壳体闷响 */
+  key: {
+    ok:    [ ['n',0.030,'bandpass',2900,1.4,0.075,0,  0.4], ['n',0.013,'highpass',5600,0.8,0.055,0,0.3], ['t',130,0.028,'sine',0.010,0] ],
+    enter: [ ['n',0.038,'bandpass',1950,1.2,0.082,0,  0.4], ['n',0.015,'highpass',4400,0.8,0.050,0,0.3], ['t',99,0.040,'sine',0.013,0] ]
+  },
+  /* 清脆叮：高频三角波 + 八度泛音，纯调性、无噪声 */
+  ding: {
+    ok:    [ ['t',1760,0.045,'triangle',0.045,0], ['t',3520,0.028,'sine',0.018,0] ],
+    enter: [ ['t',1175,0.060,'triangle',0.042,0], ['t',2350,0.032,'sine',0.015,0] ]
+  },
+  /* 木质轻叩：低中频为主 + 少量噪声，柔和、不刺耳，久练不累 */
+  wood: {
+    ok:    [ ['n',0.028,'bandpass',1150,2.4,0.105,0,0.7], ['n',0.010,'highpass',3000,0.8,0.030,0,0.4], ['t',300,0.050,'sine',0.030,0], ['t',168,0.042,'sine',0.022,0] ],
+    enter: [ ['n',0.034,'bandpass', 900,2.2,0.112,0,0.7], ['n',0.012,'highpass',2600,0.8,0.026,0,0.4], ['t',215,0.065,'sine',0.030,0], ['t',124,0.055,'sine',0.024,0] ]
+  }
+};
+function play(recipe){
+  recipe.forEach(p => {
+    if(p[0] === 't') tone(p[1], p[2], p[3], p[4], p[5]);
+    else             noise(p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
+  });
+}
+function sfxOk(){    if(S.beepOn) play((TIMBRE[S.sfx] || TIMBRE.key).ok); }
+function sfxEnter(){ if(S.beepOn) play((TIMBRE[S.sfx] || TIMBRE.key).enter); }
+/* 击键错误：沿用原低沉短音，与任何音色都不冲突 */
+function sfxBad(){   if(S.beepOn) tone(180, 0.10, 'sine', 0.05, 0); }
+/* 本轮完成 */
+function sfxDone(){  if(S.beepOn) tone(880, 0.16, 'sine', 0.05, 0); }
+let msgTimer = null;
+function flash(t){
+  $('#msg').textContent = t;
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(()=>{ $('#msg').textContent = ''; }, 1600);
+}
+
+/* ---------- 运行 ---------- */
+function startRun(){
+  S.started = true; S.t0 = Date.now();
+  $('#tipText').textContent = '正在计时…';
+  renderStage();
+  S.tick = setInterval(updateStats, 200);
+}
+
+function finish(){
+  S.done = true;
+  clearInterval(S.tick);
+  const sec = (Date.now() - S.t0)/1000;
+  const kpm = sec > 0 ? Math.round(S.keys/(sec/60)) : 0;
+  const acc = S.keys ? (S.ok/S.keys*100) : 100;
+  const scope = S.kind === 'flow'
+    ? (S.flowLen + ' 位数字')
+    : (CFG[S.mode].rows + ' 笔 · 整数 ' + S.dmin + '~' + S.dmax + ' 位'
+        + (S.fmax === 0 ? ' · 纯整数' : ' · 小数 ' + S.fmin + '~' + S.fmax + ' 位'));
+  $('#stage').innerHTML =
+      '<div class="done-box">'
+    + '<div class="big">' + kpm + ' <span style="font-size:20px">键/分</span></div>'
+    + '<div class="sub">用时 ' + sec.toFixed(1) + ' 秒 · 共 ' + scope + '</div>'
+    + '<div class="done-grid">'
+    +   '<div><b style="color:var(--green)">' + acc.toFixed(1) + '%</b><i>准确率</i></div>'
+    +   '<div><b>' + S.keys + '</b><i>击键总数</i></div>'
+    +   '<div><b style="color:var(--red)">' + S.bad + '</b><i>错误次数</i></div>'
+    + '</div>'
+    + '<div class="sub" style="margin-top:20px">按 <b>Tab</b> 或点击「重新开始」再练一遍</div>'
+    + '</div>';
+  $('#tipText').textContent = '本轮完成';
+  $('#progText').textContent = '—';
+  sfxDone();
+}
+
+/* ---------- 按键 ---------- */
+function keyToChar(e){
+  if(e.key === 'Enter' || e.code === 'NumpadEnter') return 'Enter';
+  if(/^Numpad[0-9]$/.test(e.code)) return e.code.slice(-1);
+  if(e.code === 'NumpadDecimal') return '.';
+  if(e.code === 'NumpadAdd') return '+';
+  if(e.code === 'NumpadSubtract') return '-';
+  if(e.code === 'NumpadMultiply') return '*';
+  if(e.code === 'NumpadDivide') return '/';
+  if(/^Digit[0-9]$/.test(e.code)) return S.strict ? '__main__' : e.code.slice(-1);
+  if(e.code === 'Period' || e.code === 'Comma') return S.strict ? '__main__' : '.';
+  return null;
+}
+/* 可作为「开始键」的按键：排除修饰键、锁定键与浏览器功能键，避免误触即开始 */
+const NO_START = {
+  Shift:1, Control:1, Alt:1, Meta:1, CapsLock:1, NumLock:1, ScrollLock:1,
+  Escape:1, PageUp:1, PageDown:1, Home:1, End:1, Insert:1, ContextMenu:1,
+  ArrowUp:1, ArrowDown:1, ArrowLeft:1, ArrowRight:1
+};
+function isStartKey(e){
+  if(e.ctrlKey || e.altKey || e.metaKey) return false;  // 组合键交给浏览器
+  if(NO_START[e.key]) return false;
+  if(/^F\d{1,2}$/.test(e.key)) return false;            // F1~F12
+  return true;
+}
+function restartAll(){
+  reset();
+  $('#tipText').textContent = '按任意键开始';
+}
+
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Tab'){ e.preventDefault(); restartAll(); return; }
+  /* 未开始时：按任意键即可启动计时，不必非得是数字键 */
+  if(!S.started && !S.done && isStartKey(e)) startRun();
+
+  const ch = keyToChar(e);
+  if(ch === null) return;
+  e.preventDefault();
+  if(ch === '__main__'){ sfxBad(); flash('请使用数字小键盘'); return; }
+  if(S.done) return;
+  /* 开始判定已在上方统一处理（含组合键过滤），此处不再兜底 startRun，
+     否则 Ctrl+小键盘数字 会绕过过滤而启动计时 */
+  if(!S.started) return;
+
+  const t = S.items[S.idx];
+
+  // 本笔已输完，等待回车确认
+  if(S.kind === 'list' && S.pos >= t.length){
+    S.keys++;
+    if(ch === 'Enter'){
+      S.ok++; S.idx++; S.pos = 0;
+      sfxEnter();
+      if(S.idx >= S.items.length){ updateStats(); finish(); return; }
+    } else {
+      S.bad++; sfxBad();
+      flash('本笔已输入完，请按回车确认');
+    }
+    renderStage(); renderProgress(); updateStats();
+    return;
+  }
+
+  const want = t[S.pos];
+  S.keys++;
+  if(ch === want){
+    S.ok++; S.pos++; sfxOk();
+    if(S.kind === 'flow' && S.pos >= t.length){ updateStats(); finish(); return; }
+  } else {
+    S.bad++; sfxBad();
+    flash('错！应为 ' + cueText(want));
+  }
+  renderStage(); renderProgress(); updateStats();
+});
+
+/* ---------- 控件 ---------- */
+document.querySelectorAll('.tab').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    S.mode = b.dataset.mode;
+    restartAll();
+  });
+});
+$('#btnRestart').addEventListener('click', restartAll);
+$('#optStrict').addEventListener('change', e=>{ S.strict = e.target.checked; });
+$('#optBeep').addEventListener('change', e=>{
+  S.beepOn = e.target.checked;
+  if(e.target.checked) sfxOk();          // 开启时立刻给一声，确认已生效
+});
+$('#selSfx').addEventListener('change', e=>{
+  S.sfx = TIMBRE[e.target.value] ? e.target.value : 'key';
+  const was = S.beepOn; S.beepOn = true;  // 即使音效开关关着也试听，否则改了音色听不到
+  sfxOk();
+  setTimeout(sfxEnter, 220);              // 顺带把回车音也播一遍，便于对比
+  S.beepOn = was;
+});
+$('#selFlowLen').addEventListener('change', restartAll);
+$('#selIntDigits').addEventListener('change', restartAll);
+$('#selFracDigits').addEventListener('change', restartAll);
+
+/* ---------- 启动 ---------- */
+S.mode = 'flow';
+reset();
+</script>
+</body>
+</html>

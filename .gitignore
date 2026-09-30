@@ -1,0 +1,8 @@
+# 部署用的临时凭据文件，绝不提交
+.ghtok
+
+# 系统与编辑器杂项
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
