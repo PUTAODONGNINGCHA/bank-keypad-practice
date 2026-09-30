@@ -352,7 +352,13 @@ function renderStage(){
          尾部宽度固定 ⇒ 小数位数不同的各行，小数点仍落在同一列 */
       const kDot = t.indexOf('.');
       const iEnd = kDot < 0 ? t.length : kDot;
-      const at = j => clsOf(j, i<S.idx ? t.length : S.pos, i===S.idx ? S.pos : -1);
+      /* 三种行的着色口径必须分开：
+           已完成的行 —— 整行标绿
+           当前行     —— 只标已输入的前缀 + 光标位
+           尚未开始的行 —— 一律不着色
+         原来未开始的行也按 S.pos 标绿，于是当前行输了几位，
+         后面每一行的前几位就跟着一起变绿 */
+      const at = j => i < S.idx ? 'g' : (i === S.idx ? clsOf(j, S.pos, S.pos) : 'u');
       let ip = '', tl = '';
       for(let j=0;j<iEnd;j++)  ip += '<span class="' + at(j) + '">' + t[j] + '</span>';
       for(let j=iEnd;j<t.length;j++) tl += '<span class="' + at(j) + '">' + t[j] + '</span>';
