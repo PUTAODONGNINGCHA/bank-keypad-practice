@@ -210,6 +210,9 @@ function readOpts(){
 }
 
 function reset(){
+  /* 先清掉上一轮的计时器。reset 会整体替换 S，旧 interval 的句柄随之丢失，
+     残留的定时器会在本轮结束后继续刷统计（用时一直往上跳） */
+  if(S.tick){ clearInterval(S.tick); S.tick = null; }
   const mode = S.mode || 'flow';
   const o = readOpts();
   S = Object.assign({
@@ -493,8 +496,25 @@ function flash(t){
 }
 
 /* ---------- 运行 ---------- */
+/* 会因「按键的默认行为」把刚开始的练习重置掉的控件：
+     BUTTON —— 空格在 keyup 触发 click（重新开始 / 切换模式）→ restartAll
+     SELECT —— 字母等键会跳到匹配选项并触发 change → restartAll
+   复选框不在此列：空格切换开关是它的正常用法，且那两个开关不重置练习 */
+const RESET_RISK_CTL = /^(BUTTON|SELECT)$/;
+function stealFocus(){
+  const ae = document.activeElement;
+  if(ae && RESET_RISK_CTL.test(ae.tagName) && typeof ae.blur === 'function') ae.blur();
+}
+
+let startedAt = 0;   // 本轮开始的时刻，供 restartAll 识别「刚开跑就被重置」
+
 function startRun(){
+  /* 先把焦点从按钮/下拉框上收回：否则这次按键的默认行为会在稍后
+     （按钮是 keyup）触发 click / change，把刚开始的练习又重置掉，
+     表现为「刚进入打字状态一瞬间又退回准备就绪」 */
+  stealFocus();
   S.started = true; S.t0 = Date.now();
+  startedAt = S.t0;
   $('#tipText').textContent = '正在计时…';
   renderStage();
   S.tick = setInterval(updateStats, 200);
@@ -502,7 +522,7 @@ function startRun(){
 
 function finish(){
   S.done = true;
-  clearInterval(S.tick);
+  clearInterval(S.tick); S.tick = null;   // 句柄置空，避免被后续 reset 重复清理
   const sec = (Date.now() - S.t0)/1000;
   const kpm = sec > 0 ? Math.round(S.keys/(sec/60)) : 0;
   const acc = S.keys ? (S.ok/S.keys*100) : 100;
@@ -539,7 +559,11 @@ function keyToChar(e){
   if(e.code === 'Period' || e.code === 'Comma') return S.strict ? '__main__' : '.';
   return null;
 }
-/* 可作为「开始键」的按键：排除修饰键、锁定键与浏览器功能键，避免误触即开始 */
+/* 可作为「开始键」的按键：排除修饰键、锁定键与浏览器功能键，避免误触即开始。
+   注意 NO_START 里的 Home/End/Arrow、PageUp/PageDown/Insert 是浏览器功能键，
+   但小键盘在 NumLock 关闭时，数字键的 e.key 恰好就是这些名字（7=Home、8=ArrowUp、
+   9=PageUp、1=End、2=ArrowDown、3=PageDown、0=Insert），会被一起误杀 —— 表现为
+   关着 NumLock 时只有回车能开始练习。故先按 e.code 放行小键盘，再走 e.key 黑名单 */
 const NO_START = {
   Shift:1, Control:1, Alt:1, Meta:1, CapsLock:1, NumLock:1, ScrollLock:1,
   Escape:1, PageUp:1, PageDown:1, Home:1, End:1, Insert:1, ContextMenu:1,
@@ -547,11 +571,16 @@ const NO_START = {
 };
 function isStartKey(e){
   if(e.ctrlKey || e.altKey || e.metaKey) return false;  // 组合键交给浏览器
+  if(/^Numpad/.test(e.code)) return true;               // 小键盘一律放行，不受 NumLock 状态影响
   if(NO_START[e.key]) return false;
   if(/^F\d{1,2}$/.test(e.key)) return false;            // F1~F12
   return true;
 }
 function restartAll(){
+  /* 幽灵重置防护（第二道保险）：开跑后极短时间内若还有控件残留焦点，
+     这一次按键的默认行为可能二次触发按钮 click / 下拉 change，把刚出现的
+     题面又清掉。此时段内不可能存在真实的「重新开始」意图，直接忽略 */
+  if(S.started && !S.done && Date.now() - startedAt < 500) return;
   reset();
   $('#tipText').textContent = '按任意键开始';
 }
@@ -559,7 +588,15 @@ function restartAll(){
 document.addEventListener('keydown', e=>{
   if(e.key === 'Tab'){ e.preventDefault(); restartAll(); return; }
   /* 未开始时：按任意键即可启动计时，不必非得是数字键 */
-  if(!S.started && !S.done && isStartKey(e)) startRun();
+  if(!S.started && !S.done && isStartKey(e)){
+    /* 焦点停在按钮/下拉框上时，必须当场拦掉这次按键的默认行为：
+       空格返回 null 会走下面的提前 return，拿不到 preventDefault，
+       于是 keyup 把焦点按钮激活 → click → restartAll，练习刚开就被重置。
+       数字键因为 keyToChar 返回字符而恰好被拦住了，空格是漏网的那个 */
+    const ae = document.activeElement;
+    if(ae && RESET_RISK_CTL.test(ae.tagName)) e.preventDefault();
+    startRun();
+  }
 
   const ch = keyToChar(e);
   if(ch === null) return;
@@ -600,15 +637,18 @@ document.addEventListener('keydown', e=>{
 });
 
 /* ---------- 控件 ---------- */
+/* 按钮点完就地释放焦点：留着焦点的话，下一次按空格会被浏览器当成
+   「再点一次这个按钮」，把刚开始的练习重置掉（详见 stealFocus 注释） */
 document.querySelectorAll('.tab').forEach(b=>{
   b.addEventListener('click', ()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
     b.classList.add('on');
     S.mode = b.dataset.mode;
+    b.blur();
     restartAll();
   });
 });
-$('#btnRestart').addEventListener('click', restartAll);
+$('#btnRestart').addEventListener('click', e=>{ e.currentTarget.blur(); restartAll(); });
 $('#optStrict').addEventListener('change', e=>{ S.strict = e.target.checked; });
 $('#optBeep').addEventListener('change', e=>{
   S.beepOn = e.target.checked;
