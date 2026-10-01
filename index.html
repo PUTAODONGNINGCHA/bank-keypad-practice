@@ -201,7 +201,6 @@ select:hover{border-color:var(--blue)}
 .done-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;text-align:center;width:100%;max-width:420px}
 .done-grid b{display:block;font-family:var(--mono);font-size:20px;margin-bottom:2px}
 .done-grid i{font-style:normal;font-size:11px;color:var(--muted)}
-.warn{color:var(--amber);font-size:12px}
 
 /* iPad 软键盘闸门：iOS / iPadOS 只在「输入类元素」获得焦点时才弹出软键盘，
    纯 keydown 监听是叫不出键盘的。把焦点引到这一个隐形输入框上，
@@ -324,7 +323,6 @@ select:hover{border-color:var(--blue)}
         <option value="2-2">固定 2 位</option>
       </select>
     </label>
-    <span id="msg" class="warn"></span>
     <button class="btn" id="btnRestart">重新开始 (Tab)</button>
   </div>
 
@@ -341,20 +339,6 @@ const CFG = {
   voucher: { label:'传票翻打', kind:'list', rows:24, tip:'位数长短不一、小数点对齐，连打练稳定性' }
 };
 const PER_LINE = 20;      // 速打每行显示位数
-
-/* 标准小键盘指法：食指 7/4/1/0，中指 8/5/2，无名指 9/6/3、小数点，小指 运算符与回车 */
-const FINGER = {
-  '7':'食指','4':'食指','1':'食指','0':'食指',
-  '8':'中指','5':'中指','2':'中指',
-  '9':'无名指','6':'无名指','3':'无名指','.':'无名指',
-  '/':'小指','*':'小指','-':'小指','+':'小指','Enter':'小指'
-};
-/* 键名读法：数字用单字，简短易读；符号逐个念名 */
-const SPEAK = {
-  '0':'零','1':'一','2':'二','3':'三','4':'四','5':'五',
-  '6':'六','7':'七','8':'八','9':'九','.':'小数点',
-  '/':'除号','*':'乘号','-':'减号','+':'加号','Enter':'回车'
-};
 
 /* ---------- 状态 ---------- */
 let S = {};
@@ -582,14 +566,6 @@ function nextChar(){
   return null;
 }
 
-/* 目标键 → 提示文案，如 "七，食指"（用于错误提示） */
-function cueText(ch){
-  if(!ch) return '';
-  const name = SPEAK[ch] || ch;
-  const f = FINGER[ch];
-  return f ? (name + '，' + f) : name;
-}
-
 function renderProgress(){
   const c = CFG[S.mode];
   $('#modeName').textContent = c.label;
@@ -704,13 +680,6 @@ function sfxEnter(){ if(S.beepOn) play((TIMBRE[S.sfx] || TIMBRE.key).enter); }
 function sfxBad(){   if(S.beepOn) tone(180, 0.10, 'sine', 0.05, 0); }
 /* 本轮完成 */
 function sfxDone(){  if(S.beepOn) tone(880, 0.16, 'sine', 0.05, 0); }
-let msgTimer = null;
-function flash(t){
-  $('#msg').textContent = t;
-  clearTimeout(msgTimer);
-  msgTimer = setTimeout(()=>{ $('#msg').textContent = ''; }, 1600);
-}
-
 /* ---------- 运行 ---------- */
 /* 会因「按键的默认行为」把刚开始的练习重置掉的控件：
      BUTTON —— 空格在 keyup 触发 click（重新开始 / 切换模式）→ restartAll
@@ -827,7 +796,7 @@ document.addEventListener('keydown', e=>{
   const ch = keyToChar(e);
   if(ch === null) return;
   e.preventDefault();
-  if(ch === '__main__'){ sfxBad(); flash('请使用数字小键盘'); return; }
+  if(ch === '__main__'){ sfxBad(); return; }
   if(S.done) return;
   /* 开始判定已在上方统一处理（含组合键过滤），此处不再兜底 startRun，
      否则 Ctrl+小键盘数字 会绕过过滤而启动计时 */
@@ -848,8 +817,8 @@ document.addEventListener('keydown', e=>{
       sfxEnter();
       if(S.idx >= S.items.length){ updateStats(); finish(); return; }
     } else {
+      /* 只记标记：题面上那行「按回车确认」自己会闪红，控制栏不再写文字 */
       S.bad++; sfxBad(); S.errEnter = true;
-      flash('本笔已输入完，请按回车确认');
     }
     renderStage(); renderProgress(); updateStats();
     return;
@@ -861,10 +830,10 @@ document.addEventListener('keydown', e=>{
     S.ok++; S.pos++; sfxOk();
     if(S.kind === 'flow' && S.pos >= t.length){ updateStats(); finish(); return; }
   } else {
-    /* 只记标记、不动 S.pos —— 停在原位等重输（原有的暂停口径不变），
-       红闪由 renderStage 渲染成 .c.err 播一次动画 */
+    /* 只记标记、不动 S.pos —— 停在原位等重输（原有的暂停口径不变）。
+       反馈只有题面上那一位的红色闪烁（renderStage 渲染成 .c.err），
+       控制栏不再写文字提示 */
     S.bad++; sfxBad(); S.errAt = S.pos;
-    flash('错！应为 ' + cueText(want));
   }
   renderStage(); renderProgress(); updateStats();
 });
