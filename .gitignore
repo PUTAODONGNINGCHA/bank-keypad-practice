@@ -6,3 +6,6 @@ Thumbs.db
 desktop.ini
 .vscode/
 .idea/
+
+# 智能体工作目录（项目记忆、无头浏览器验证脚本与预览图），不入库
+.workbuddy/

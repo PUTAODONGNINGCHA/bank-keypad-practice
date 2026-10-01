@@ -2,21 +2,80 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>银行小键盘录入练习</title>
+<script>
+/* 主题引导：必须在首屏渲染前把 data-theme 写到 <html> 上，
+   否则会先按暗色渲染一帧再跳亮（FOUC）。
+   口径：只认用户手动选定过的值，没选过就是暗色 ——
+   即「改造前的观感完全不变」，亮色是需要主动点一下的选项 */
+(function(){
+  var t = null;
+  try{ t = localStorage.getItem('keypad-theme'); }catch(e){}
+  if(t !== 'light' && t !== 'dark') t = 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
 <style>
+/* ===== 主题令牌 =====
+   所有颜色一律从这里取，切换主题只换令牌、不动任何具体规则。
+   暗色为默认（与改造前完全一致，老用户看到的样子不变），
+   亮色由 :root[data-theme="light"] 覆盖后生效。 */
 :root{
   --bg:#0d1117; --panel:#161b22; --panel2:#1c2128; --line:#30363d;
   --txt:#e6edf3; --muted:#8b949e; --dim:#484f58;
   --blue:#58a6ff; --green:#3fb950; --red:#f85149; --amber:#d29922; --purple:#bc8cff;
+  /* 半透明强调色单独立令牌：浅色底上需要换成饱和的深蓝，
+     若沿用 --blue 直接叠透明度，在白色背景上会糊成一片看不清 */
+  --soft:rgba(31,111,235,.12);       /* 选中页签的底色 */
+  --faint:rgba(31,111,235,.08);      /* 当前行的底色 */
+  --badgeBg:rgba(31,111,235,.10);    /* 模式标签的底色 */
+  --cursorBg:rgba(31,111,235,.30);   /* 待输入字符的底色 */
+  --cursorEdge:rgba(88,166,255,.53); /* 待输入字符的描边 */
+  --errBg:rgba(248,81,73,.30);       /* 按错时当前字符的底色 */
   --mono:"JetBrains Mono","Cascadia Mono",Consolas,"Courier New",monospace;
+  color-scheme:dark;                 /* 滚动条、复选框等原生控件一并跟随 */
+  /* ===== 版式令牌 =====
+     桌面取值 = 改造前原样；窄屏/平板只改这几个变量，不动任何具体规则。
+     题面字号用 clamp 而非断点，保证「每行 20 位」在任何宽度下都不横向溢出 */
+  --pad:18px;                        /* 页面内边距（含安全区基线） */
+  --stageH:460px;                    /* 练习区固定高度：恒定才不会有"答题时页面下跳" */
+  /* 题面字号/字距按视口宽度连续缩放（clamp 而非断点）：
+     每行固定 20 位且 nowrap，字号不跟着缩就会在窄屏上横向溢出。
+     实测「最宽行墨迹 = 15.8×字号 + 20×字距」，据此定系数：
+       ≥1180px 触上限 ⇒ 桌面/平板竖屏都是 32px/4px，与改造前逐像素一致；
+       390px 手机 ⇒ 约 16.4px；下限 14px 可撑到约 300px 宽不溢出 */
+  --flowFs:clamp(14px, 4.2vw, 32px);
+  --flowLs:clamp(.8px, .34vw, 4px);
+}
+/* 亮色调：GitHub Light 口径，令牌命名与暗色一一对应，便于日后增补 */
+:root[data-theme="light"]{
+  --bg:#f6f8fa; --panel:#ffffff; --panel2:#f6f8fa; --line:#d1d9e0;
+  --txt:#1f2328; --muted:#59636e; --dim:#818b98;
+  --blue:#0969da; --green:#1a7f37; --red:#cf222e; --amber:#9a6700; --purple:#8250df;
+  --soft:rgba(9,105,218,.09);
+  --faint:rgba(9,105,218,.06);
+  --badgeBg:rgba(9,105,218,.10);
+  --cursorBg:rgba(9,105,218,.17);
+  --cursorEdge:rgba(9,105,218,.50);
+  --errBg:rgba(207,34,46,.16);
+  color-scheme:light;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{
   background:var(--bg); color:var(--txt); min-height:100vh;
   font-family:-apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
-  padding:18px; display:flex; justify-content:center;
+  padding:var(--pad);
+  /* 刘海屏/圆角屏的安全区：env() 不支持时整条声明无效，回落到上面的 --pad */
+  padding-top:calc(var(--pad) + env(safe-area-inset-top));
+  padding-bottom:calc(var(--pad) + env(safe-area-inset-bottom));
+  padding-left:calc(var(--pad) + env(safe-area-inset-left));
+  padding-right:calc(var(--pad) + env(safe-area-inset-right));
+  display:flex; justify-content:center;
+  transition:background-color .2s ease,color .2s ease;
 }
+/* iOS Safari 的地址栏会伸缩，100vh 会算多；dvh 支持时才覆盖 */
+@supports (min-height:100dvh){ body{min-height:100dvh} }
 .wrap{width:100%;max-width:1180px;display:flex;flex-direction:column;gap:13px}
 
 header{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
@@ -26,41 +85,85 @@ h1 em{font-style:normal;color:var(--muted);font-weight:400;font-size:12.5px;marg
 .tab{padding:7px 15px;border-radius:7px;border:1px solid var(--line);background:var(--panel);
   color:var(--muted);cursor:pointer;font-size:13px;font-family:inherit;transition:.15s}
 .tab:hover{color:var(--txt);border-color:var(--dim)}
-.tab.on{background:#1f6feb1f;border-color:var(--blue);color:var(--blue)}
+.tab.on{background:var(--soft);border-color:var(--blue);color:var(--blue)}
+
+/* 主题切换按钮。刻意不共用 .tab 类：页签的点击事件是按类名批量绑定的，
+   一旦共类就会被当成模式切换，点一下直接重置本轮练习 */
+.iconbtn{display:flex;align-items:center;gap:6px;flex:none;padding:7px 13px;border-radius:7px;
+  border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;
+  font-size:13px;font-family:inherit;transition:.15s}
+.iconbtn:hover{color:var(--txt);border-color:var(--dim)}
+.iconbtn:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.iconbtn svg{width:15px;height:15px;flex:none}
+/* 按钮显示的是「点下去会变成什么」：暗色时给太阳 + 亮色，亮色时给月亮 + 暗色 */
+.ic-moon{display:none}
+:root[data-theme="light"] .ic-sun{display:none}
+:root[data-theme="light"] .ic-moon{display:block}
 
 /* 单列：右侧面板已移除，练习区获得全部宽度 */
 .main{display:grid;grid-template-columns:1fr;gap:13px;align-items:start}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  transition:background-color .2s ease,border-color .2s ease}
 
 /* 高度写死：准备页与练习中必须一样高，否则一开始答题，题面一长就把
    下面的统计栏/控制栏整体顶下去（速打 +104px、传票 +188px），看着像"页面往下跳"。
    内容超出时由内部 .flowbox/.list 自己滚动，不再撑高外层 */
-.stage{padding:20px 22px;height:460px;display:flex;flex-direction:column}
+.stage{padding:20px 22px;height:var(--stageH);display:flex;flex-direction:column}
 /* #stage 是 JS 往里塞题面的那层容器，也是 .stage 的 flex 子项。
    它的默认 min-height:auto 会让它拒绝收缩到内容高度以下（长题面时直接溢出卡片、
    且 .flowbox 的 overflow 形同虚设），必须 flex:1 + min-height:0 才能把
    高度约束传下去、由 .flowbox/.list 自己滚动 */
 #stage{flex:1;min-height:0;display:flex;flex-direction:column}
 .stage-head{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);margin-bottom:15px;flex:none}
-.badge{padding:3px 10px;border-radius:20px;background:#1f6feb1a;color:var(--blue);font-size:11px}
+.badge{padding:3px 10px;border-radius:20px;background:var(--badgeBg);color:var(--blue);font-size:11px}
 .hint{margin-left:auto;color:var(--dim)}
 
-/* min-height:0 是 flex 子项能收缩并触发内部滚动的必要条件 */
-.flowbox{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto}
+/* min-height:0 是 flex 子项能收缩并触发内部滚动的必要条件；
+   overscroll-behavior:contain 防止在 iPad 上滚到边界时把整页一起带着橡皮筋 */
+.flowbox{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;
+  overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 /* flex:none 不能省：.flow 是 .flowbox 的 flex 子项，默认 flex-shrink:1，
    题面比可视区高时它会被压扁（文字溢出且不产生滚动条，长位数会被裁掉）；
    置 none 后保持自然高度，超出部分交给 .flowbox 滚动 */
-.flow{font-family:var(--mono);font-size:32px;letter-spacing:4px;line-height:1.8;margin:auto 0;flex:none}
+.flow{font-family:var(--mono);font-size:var(--flowFs);letter-spacing:var(--flowLs);
+  line-height:1.8;margin:auto 0;flex:none}
 .fline{white-space:nowrap}
 .u{color:var(--dim)}
 .g{color:var(--green)}
-.c{color:var(--txt);background:#1f6feb4d;border-radius:3px;box-shadow:inset 0 0 0 1px #58a6ff88}
+.c{color:var(--txt);background:var(--cursorBg);border-radius:3px;box-shadow:inset 0 0 0 1px var(--cursorEdge)}
 .e{color:var(--red);text-decoration:underline}
 
-.list{display:flex;flex-direction:column;gap:5px;flex:1;min-height:0;overflow-y:auto;padding-right:4px}
+/* ===== 按错时的红闪 =====
+   只有「本次按键出错」那一次，才给当前字符挂 .err 播一遍动画；
+   动画终帧正好等于 .c 的待输入态（蓝底 + 蓝框）⇒ 闪完自动恢复，
+   用户看到的仍是「停在原位等重输」，不需要额外代码回退。
+   依赖的前提：题面每次击键整块重建，新建元素上的 CSS 动画天然从 0% 起播一次；
+   下一次击键重绘不再带 .err，红闪随之消失。
+   0~40% 那段刻意不插值：红色只闪一瞬会看不清，留住约 200ms 才读得到，
+   之后再淡回蓝色 —— 观感是「闪一下」而不是「一直红着」。 */
+@keyframes errflash{
+  0%,40%{ color:var(--red); background:var(--errBg); box-shadow:inset 0 0 0 2px var(--red) }
+  100%  { color:var(--txt); background:var(--cursorBg); box-shadow:inset 0 0 0 1px var(--cursorEdge) }
+}
+.c.err{animation:errflash .5s ease-out 1}
+/* 一笔已输完、等回车时按错了别的键：没有"当前字符位"可闪，
+   就把「按回车确认」这行字闪红（终帧 = .chk.go 的蓝） */
+@keyframes errtext{
+  0%,40%{ color:var(--red) }
+  100%  { color:var(--blue) }
+}
+.chk.err{animation:errtext .5s ease-out 1}
+/* 用户关闭动效时保住「变红」这个信息本身，只去掉动画 */
+@media (prefers-reduced-motion:reduce){
+  .c.err,.chk.err{animation:none;color:var(--red)}
+  .c.err{background:var(--errBg);box-shadow:inset 0 0 0 2px var(--red)}
+}
+
+.list{display:flex;flex-direction:column;gap:5px;flex:1;min-height:0;overflow-y:auto;padding-right:4px;
+  overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .row{display:flex;align-items:center;gap:14px;padding:7px 14px;border-radius:8px;
   background:var(--panel2);border:1px solid transparent;transition:.15s;flex:none}
-.row.cur{border-color:var(--blue);background:#1f6feb14}
+.row.cur{border-color:var(--blue);background:var(--faint)}
 .row.done{opacity:.45}
 .no{font-family:var(--mono);font-size:11.5px;color:var(--dim);width:24px;flex:none}
 .val{font-family:var(--mono);font-size:20px;letter-spacing:2px;white-space:pre;
@@ -99,9 +202,50 @@ select:hover{border-color:var(--blue)}
 .done-grid b{display:block;font-family:var(--mono);font-size:20px;margin-bottom:2px}
 .done-grid i{font-style:normal;font-size:11px;color:var(--muted)}
 .warn{color:var(--amber);font-size:12px}
+
+/* iPad 软键盘闸门：iOS / iPadOS 只在「输入类元素」获得焦点时才弹出软键盘，
+   纯 keydown 监听是叫不出键盘的。把焦点引到这一个隐形输入框上，
+   inputmode=numeric 让 iPad 直接弹数字键盘（而非全键盘）。
+   font-size:16px 是 iOS 的防自动缩放底线；position:fixed 避免聚焦时整页被顶动 */
+#kbd{position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;border:0;padding:0;
+  margin:0;font-size:16px;pointer-events:none;z-index:-1}
+
+/* ===== 窄屏 / 平板适配 =====
+   只覆写上面那几个版式令牌与触控尺寸；未列到的规则一律沿用桌面口径 ——
+   避免"顺手改一处"把已经量过几何的桌面版式带偏 */
+@media (max-width:1100px){
+  /* 上限放宽到 560：iPad 竖屏可视高约 1000，440 会在下方留一大片空白，
+     放高一点既补满视觉、也让 1000 位题面多露几行上下文 */
+  :root{ --pad:12px; --stageH:min(560px,54vh) }
+}
+@media (max-width:1100px) and (max-height:800px){
+  /* iPad 横屏可视高度只有 700 上下，练习区必须让位给统计栏与控制栏；
+     320px 是下限 —— 再矮就只剩两三行，看不到上下文了 */
+  :root{ --stageH:max(320px,min(400px,50vh)) }
+}
+@media (max-width:700px){
+  :root{ --pad:10px; --stageH:min(380px,46vh) }
+  .stage{padding:14px 15px}
+  .stat b{font-size:17px}
+  .stat i{font-size:9.5px}
+}
+/* 触控设备：控件抬到 iOS 建议的约 44px 触控高度；
+   touch-action:manipulation 去掉双击缩放的 300ms 判定延迟（双指缩放仍保留） */
+@media (pointer:coarse){
+  .tab,.iconbtn,.btn{min-height:44px;padding:10px 16px;font-size:14px;touch-action:manipulation}
+  select{min-height:44px;padding:8px 10px;font-size:14px;touch-action:manipulation}
+  .sw{min-height:44px;gap:8px;touch-action:manipulation}
+  .sw input{width:20px;height:20px}
+  .bar{gap:10px 16px}
+}
 </style>
 </head>
 <body>
+<!-- iPad / 平板的软键盘闸门：点练习区即聚焦它 → 弹出数字键盘。
+     桌面端完全无感（不可见、不可点、不进 Tab 序） -->
+<input id="kbd" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off"
+       autocorrect="off" autocapitalize="off" spellcheck="false" tabindex="-1"
+       aria-label="数字输入（用于调出数字键盘）">
 <div class="wrap">
 
   <header>
@@ -111,6 +255,16 @@ select:hover{border-color:var(--blue)}
       <button class="tab" data-mode="amount">金额录入</button>
       <button class="tab" data-mode="voucher">传票翻打</button>
     </div>
+    <button class="iconbtn" id="btnTheme" type="button" title="当前暗色调，点击切到亮色调" aria-label="切换到亮色调">
+      <svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"/>
+        <path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M18.6 5.4l-1.5 1.5M6.9 17.1l-1.5 1.5"/>
+      </svg>
+      <svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20.6 14.7A8.7 8.7 0 0 1 9.3 3.4a8.9 8.9 0 1 0 11.3 11.3z"/>
+      </svg>
+      <span id="themeLabel">亮色</span>
+    </button>
   </header>
 
   <div class="main">
@@ -149,6 +303,9 @@ select:hover{border-color:var(--blue)}
         <option value="120" selected>120</option>
         <option value="200">200</option>
         <option value="300">300</option>
+        <option value="500">500</option>
+        <option value="700">700</option>
+        <option value="1000">1000</option>
       </select>
     </label>
     <label class="sw">整数位
@@ -231,6 +388,10 @@ function reset(){
     mode: mode,
     kind: CFG[mode].kind,
     items: [], idx:0, pos:0,
+    /* 红闪标记：errAt = 本次按错的那一位（-1 = 没按错），
+       errEnter = 一笔输完、等回车时按错了别的键（此时没有"当前位"可闪）。
+       只在渲染时读一次，下一次击键开头即清空 */
+    errAt:-1, errEnter:false,
     started:false, done:false,
     t0:0, tick:null,
     keys:0, ok:0, bad:0
@@ -325,12 +486,13 @@ function renderStage(){
       const end = Math.min(s+PER_LINE, t.length);
       let line = '';
       for(let i=s; i<end; i++){
-        line += '<span class="' + clsOf(i, S.pos, S.pos) + '">' + t[i] + '</span>';
+        line += '<span class="' + clsOf(i, S.pos, S.pos) + (i === S.errAt ? ' err' : '') + '">' + t[i] + '</span>';
         if((i-s+1) % 5 === 0 && i < end-1) line += '&nbsp;';
       }
       html += '<div class="fline">' + line + '</div>';
     }
     $('#stage').innerHTML = '<div class="flowbox"><div class="flow">' + html + '</div></div>';
+    scrollFlowToCur();
   } else {
     /* 本组最大小数位数 → 决定尾部固定占位宽度（保证小数点同列） */
     const maxF = S.items.reduce((m,t)=>{
@@ -347,6 +509,7 @@ function renderStage(){
         cls += ' cur';
         if(S.pos >= t.length){ chkCls += ' go'; chkTxt = '按回车确认'; }
         else chkTxt = S.pos + '/' + t.length;
+        if(i === S.idx && S.errEnter) chkCls += ' err';   // 等回车时按错 → 这行提示闪红
       }
       /* 按小数点拆成「整数部」「尾部」，分别放进两个容器：
          尾部宽度固定 ⇒ 小数位数不同的各行，小数点仍落在同一列 */
@@ -357,8 +520,11 @@ function renderStage(){
            当前行     —— 只标已输入的前缀 + 光标位
            尚未开始的行 —— 一律不着色
          原来未开始的行也按 S.pos 标绿，于是当前行输了几位，
-         后面每一行的前几位就跟着一起变绿 */
-      const at = j => i < S.idx ? 'g' : (i === S.idx ? clsOf(j, S.pos, S.pos) : 'u');
+         后面每一行的前几位就跟着一起变绿。
+         出错标记只挂在当前行的出错位上 —— 红闪属于"刚按的那一下"，
+         不前进、不扩散到其它行 */
+      const at = j => (i < S.idx ? 'g' : (i === S.idx ? clsOf(j, S.pos, S.pos) : 'u'))
+                    + (i === S.idx && j === S.errAt ? ' err' : '');
       let ip = '', tl = '';
       for(let j=0;j<iEnd;j++)  ip += '<span class="' + at(j) + '">' + t[j] + '</span>';
       for(let j=iEnd;j<t.length;j++) tl += '<span class="' + at(j) + '">' + t[j] + '</span>';
@@ -370,6 +536,32 @@ function renderStage(){
     $('#stage').innerHTML = '<div class="list" style="--fpn:' + maxF + '">' + rows + '</div>';
     scrollToCur();
   }
+}
+
+/* 速打题面比可视区高时必须把光标行滚进视野：
+   flow 分支每次击键都整体重建 #stage，新建元素的 scrollTop 归 0 ——
+   一旦题面超过可视高度（200 位以上约 11 行），正在打的那一行会被永久
+   顶到视口外，用户越打越"看不见自己打到哪"。300 位时已存在该问题，
+   新增 500/700/1000 位后直接不可用，故补齐。
+   做法：当前行恒定停在可视区上 1/3 处（提词器式匀速上移），
+   短题面（未溢出、由 margin:auto 垂直居中）保持原样不滚动 */
+function applyFlowScroll(){
+  const box = document.querySelector('.flowbox');
+  if(!box) return;
+  if(box.scrollHeight <= box.clientHeight){ box.scrollTop = 0; return; }
+  const cur = box.querySelector('.c');
+  if(!cur) return;
+  const line = cur.closest('.fline') || cur.parentElement;
+  if(!line) return;
+  const top = line.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+  box.scrollTop = Math.max(0, Math.min(top - box.clientHeight / 3, box.scrollHeight - box.clientHeight));
+}
+function scrollFlowToCur(){
+  applyFlowScroll();
+  /* 再补一帧：个别移动端浏览器会把"同一帧内重建 DOM + 设 scrollTop"这一步吃掉
+     （表现为题面不跟着上走）。rAF 里按最新 DOM 再算一次，代价仅一次布局读取。
+     同步先算一遍是必须的 —— 否则任何同步量测（含无头探针）读到的都是旧值 */
+  if(window.requestAnimationFrame) requestAnimationFrame(applyFlowScroll);
 }
 
 function scrollToCur(){
@@ -401,9 +593,15 @@ function cueText(ch){
 function renderProgress(){
   const c = CFG[S.mode];
   $('#modeName').textContent = c.label;
-  $('#progText').textContent = c.kind === 'flow'
-    ? (S.pos + ' / ' + S.flowLen + ' 位')
-    : ('第 ' + Math.min(S.idx+1, c.rows) + ' / ' + c.rows + ' 笔');
+  if(c.kind === 'flow'){
+    /* 带上「第几行」：长题面下这是判断"是否已经自动翻到下一屏"的唯一可见依据，
+       行号必须与滚动同步推进，否则用户会觉得"卡在打完的那一页" */
+    const lines = Math.ceil(S.flowLen / PER_LINE);
+    const lineNo = Math.min(Math.floor(S.pos / PER_LINE) + 1, lines);
+    $('#progText').textContent = '第 ' + lineNo + ' / ' + lines + ' 行 · ' + S.pos + ' / ' + S.flowLen + ' 位';
+  } else {
+    $('#progText').textContent = '第 ' + Math.min(S.idx+1, c.rows) + ' / ' + c.rows + ' 笔';
+  }
 }
 
 function updateStats(){
@@ -575,6 +773,11 @@ function keyToChar(e){
   if(e.code === 'NumpadDivide') return '/';
   if(/^Digit[0-9]$/.test(e.code)) return S.strict ? '__main__' : e.code.slice(-1);
   if(e.code === 'Period' || e.code === 'Comma') return S.strict ? '__main__' : '.';
+  /* 软键盘兜底：iPad / 手机的系统键盘常报出 code:'' 或 'Unidentified'
+     （各家浏览器不一致），这时只能认 e.key —— 否则软键盘按下去"什么都没发生"。
+     仅在主键盘不受限时生效，不动「仅用小键盘」的严格判定 */
+  if(!S.strict && /^[0-9]$/.test(e.key)) return e.key;
+  if(!S.strict && (e.key === '.' || e.key === ',')) return '.';
   return null;
 }
 /* 可作为「开始键」的按键：排除修饰键、锁定键与浏览器功能键，避免误触即开始。
@@ -630,6 +833,11 @@ document.addEventListener('keydown', e=>{
      否则 Ctrl+小键盘数字 会绕过过滤而启动计时 */
   if(!S.started) return;
 
+  /* 进到这一步说明本次按键要真正参与判分了：先把上一枚红闪标记清掉。
+     题面每次击键是整块重建的，标记不清就会被重建时重播一遍动画 ——
+     红闪只属于「刚刚那一次错误」，属一次性反馈 */
+  S.errAt = -1; S.errEnter = false;
+
   const t = S.items[S.idx];
 
   // 本笔已输完，等待回车确认
@@ -640,7 +848,7 @@ document.addEventListener('keydown', e=>{
       sfxEnter();
       if(S.idx >= S.items.length){ updateStats(); finish(); return; }
     } else {
-      S.bad++; sfxBad();
+      S.bad++; sfxBad(); S.errEnter = true;
       flash('本笔已输入完，请按回车确认');
     }
     renderStage(); renderProgress(); updateStats();
@@ -653,11 +861,66 @@ document.addEventListener('keydown', e=>{
     S.ok++; S.pos++; sfxOk();
     if(S.kind === 'flow' && S.pos >= t.length){ updateStats(); finish(); return; }
   } else {
-    S.bad++; sfxBad();
+    /* 只记标记、不动 S.pos —— 停在原位等重输（原有的暂停口径不变），
+       红闪由 renderStage 渲染成 .c.err 播一次动画 */
+    S.bad++; sfxBad(); S.errAt = S.pos;
     flash('错！应为 ' + cueText(want));
   }
   renderStage(); renderProgress(); updateStats();
 });
+
+/* ---------- 触控 / 平板 ---------- */
+/* pointer:coarse 比 UA 判断可靠；接了外接键盘的 iPad 依然是 coarse ——
+   这正是想要的：默认按"手上没有小键盘"处理，用户想严格练再自己勾回来 */
+const IS_TOUCH = !!((window.matchMedia && matchMedia('(pointer:coarse)').matches) ||
+                    ('ontouchstart' in window));
+
+if(IS_TOUCH){
+  /* 软键盘发出的数字键 code 是 Digit1 而不是 Numpad1。若默认勾着「仅用小键盘」，
+     每一次数字都会被拦下并提示"请使用数字小键盘" —— 在 iPad 上等于无法练习。
+     故触控设备默认取消勾选（此项交给用户自己的判断，不做隐式豁免） */
+  $('#optStrict').checked = false;
+}
+
+/* 轻点练习区 → 聚焦隐形输入框 → iPad 弹出数字键盘。
+   只绑在练习区上，不去抢下拉框/复选框该拿的焦点 */
+$('.stage').addEventListener('pointerdown', ()=>{ try{ $('#kbd').focus(); }catch(e){} });
+/* 被我们处理掉的键都已 preventDefault，漏网键（字母、空格等）会写进这个输入框，
+   随手清空，免得 iOS 攒出智能替换、或光标位置随输入漂移 */
+$('#kbd').addEventListener('input', e=>{ e.target.value = ''; });
+
+/* iOS 的 Web Audio 必须在一次**真实手势**里解锁，否则 AudioContext 一直 suspended、
+   全程无声。挂在 touchstart 而非 keydown：软键盘的按键事件在 Safari 里不算手势 */
+document.addEventListener('touchstart', ()=>{ try{ audio(); }catch(e){} }, {once:true, passive:true});
+
+/* ---------- 主题 ---------- */
+/* 两态开关：暗色（默认，与改造前一致）/ 亮色。
+   状态只存在 localStorage 里，不依赖 JS 变量 ——
+   html 上的 data-theme 属性就是唯一事实来源。
+   注意本模块只写属性与按钮文案，不碰练习状态，所以中途切主题不会打断本轮。 */
+const THEME_KEY = 'keypad-theme';
+
+/* 以 html 上的实际属性为准，避免与内存里的变量各记一份而对不上 */
+function nowTheme(){
+  return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+}
+function paintTheme(t){
+  const light = t === 'light';
+  document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark');
+  const next = light ? '切换到暗色调' : '切换到亮色调';
+  const lab = $('#themeLabel');
+  if(lab) lab.textContent = light ? '暗色' : '亮色';
+  const btn = $('#btnTheme');
+  if(btn){
+    btn.title = '当前' + (light ? '亮色调' : '暗色调') + '，点击' + next;
+    btn.setAttribute('aria-label', next);
+  }
+}
+function setTheme(t){
+  paintTheme(t);
+  /* 隐私模式 / 禁用存储会抛错：静默降级为「本次有效」，不影响练习 */
+  try{ localStorage.setItem(THEME_KEY, t); }catch(e){}
+}
 
 /* ---------- 控件 ---------- */
 /* 按钮点完就地释放焦点：留着焦点的话，下一次按空格会被浏览器当成
@@ -688,9 +951,18 @@ $('#selFlowLen').addEventListener('change', restartAll);
 $('#selIntDigits').addEventListener('change', restartAll);
 $('#selFracDigits').addEventListener('change', restartAll);
 
+/* 主题按钮点完就地释放焦点：它与「重新开始」同样是 BUTTON，
+   留着焦点的话下次按空格会被浏览器当成「再点一次这个按钮」 */
+$('#btnTheme').addEventListener('click', e=>{
+  setTheme(nowTheme() === 'dark' ? 'light' : 'dark');
+  e.currentTarget.blur();
+});
+
 /* ---------- 启动 ---------- */
 S.mode = 'flow';
 reset();
+/* 属性已由引导脚本写好，这里把按钮文案与 title 对齐到实际主题 */
+paintTheme(nowTheme());
 </script>
 </body>
 </html>
